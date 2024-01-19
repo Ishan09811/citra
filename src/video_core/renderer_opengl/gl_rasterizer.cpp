@@ -78,7 +78,7 @@ static bool IsVendorMali() {
     return gpu_vendor.find("ARM") != std::string::npos;
 }
 
-RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory,
+RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory, Pica::PicaCore& pica,
                                    VideoCore::CustomTexManager& custom_tex_manager,
                                    VideoCore::RendererBase& renderer, Driver& driver_)
     : VideoCore::RasterizerAccelerated{memory, pica}, driver{driver_},
