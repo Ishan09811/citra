@@ -29,10 +29,16 @@ using VideoCore::SurfaceType;
 using namespace Common::Literals;
 using namespace Pica::Shader::Generator;
 
+enum class Vendor {
+    ARM,
+    Other
+};
+
 constexpr std::size_t VERTEX_BUFFER_SIZE = 16_MiB;
 constexpr std::size_t INDEX_BUFFER_SIZE = 2_MiB;
 constexpr std::size_t UNIFORM_BUFFER_SIZE = 2_MiB;
 constexpr std::size_t TEXTURE_BUFFER_SIZE = 2_MiB;
+constexpr std::size_t MIN_TEXTURE_BUFFER_SIZE = 65536;
 
 GLenum MakePrimitiveMode(Pica::PipelineRegs::TriangleTopology topology) {
     switch (topology) {
@@ -63,20 +69,23 @@ GLenum MakeAttributeType(Pica::PipelineRegs::VertexAttributeFormat format) {
     return GL_UNSIGNED_BYTE;
 }
 
-[[nodiscard]] GLsizeiptr TextureBufferSize() {
-    // Use the smallest texel size from the texel views
-    // which corresponds to GL_RG32F
+[[nodiscard]] GLsizeiptr TextureBufferSize(Vendor vendor) {
     GLint max_texel_buffer_size;
     glGetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &max_texel_buffer_size);
+
+    std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
+    Vendor vendor = (gpu_vendor.find("ARM") != std::string::npos) ? Vendor::ARM : Vendor::Other;
+    // Old Mali GPUs that report the minimum texture buffer size mandated by the standard
+    // experience slowdown when approaching said limit, use a smaller size for these buffers.
+    if (vendor == Vendor::ARM && max_texel_buffer_size == MIN_TEXTURE_BUFFER_SIZE) {
+        return 16 * 1024;  // 16 KiB
+    }
     return std::min<GLsizeiptr>(max_texel_buffer_size * 8ULL, TEXTURE_BUFFER_SIZE);
 }
 
 } // Anonymous namespace
 
-static bool IsVendorMali() {
-    std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
-    return gpu_vendor.find("ARM") != std::string::npos;
-}
+
 
 RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory, Pica::PicaCore& pica,
                                    VideoCore::CustomTexManager& custom_tex_manager,
@@ -88,9 +97,9 @@ RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory, Pica::PicaCore&
       vertex_buffer{driver, GL_ARRAY_BUFFER, VERTEX_BUFFER_SIZE},
       uniform_buffer{driver, GL_UNIFORM_BUFFER, UNIFORM_BUFFER_SIZE},
       index_buffer{driver, GL_ELEMENT_ARRAY_BUFFER, INDEX_BUFFER_SIZE},
-      texture_buffer{driver, GL_TEXTURE_BUFFER, IsVendorMali() ? (GL_MAX_TEXTURE_BUFFER_SIZE == 65536 ? 11264 : texture_buffer_size) : texture_buffer_size},
-      texture_lf_buffer{driver, GL_TEXTURE_BUFFER, IsVendorMali() ? (GL_MAX_TEXTURE_BUFFER_SIZE == 65536 ? 525312 : texture_buffer_size) : texture_buffer_size} {
-        
+      texture_buffer{driver, GL_TEXTURE_BUFFER, texture_buffer_size},
+      texture_lf_buffer{driver, GL_TEXTURE_BUFFER, texture_buffer_size} {
+
 
     // Clipping plane 0 is always enabled for PICA fixed clip plane z <= 0
     state.clip_distance[0] = true;
