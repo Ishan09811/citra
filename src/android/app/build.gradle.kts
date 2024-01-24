@@ -179,7 +179,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
     implementation("androidx.slidingpanelayout:slidingpanelayout:1.2.0")
-    implementation("com.google.android.material:material:1.10.0")
+    implementation("com.google.android.material:material:1.9.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.work:work-runtime:2.8.1")
     implementation("org.ini4j:ini4j:0.5.4")
