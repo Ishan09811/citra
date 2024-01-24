@@ -29,17 +29,6 @@ using VideoCore::SurfaceType;
 using namespace Common::Literals;
 using namespace Pica::Shader::Generator;
 
-namespace {
-    static bool IsVendorMali() {
-        std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
-        return gpu_vendor.find("ARM") != std::string::npos;
-    }
-}
-
-enum class Vendor {
-    ARM,
-    Other
-};
 
 constexpr std::size_t VERTEX_BUFFER_SIZE = 16_MiB;
 constexpr std::size_t INDEX_BUFFER_SIZE = 2_MiB;
@@ -76,13 +65,25 @@ GLenum MakeAttributeType(Pica::PipelineRegs::VertexAttributeFormat format) {
     return GL_UNSIGNED_BYTE;
 }
 
-[[nodiscard]] GLsizeiptr TextureBufferSize(Vendor vendor) {
+namespace {
+    static bool IsVendorMali() {
+        std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
+        return gpu_vendor.find("ARM") != std::string::npos;
+    }
+}
+
+enum class Vendor {
+    ARM,
+    Other
+};
+
+[[nodiscard]] GLsizeiptr TextureBufferSize() {
     GLint max_texel_buffer_size;
     glGetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &max_texel_buffer_size);
 
     // Old Mali GPUs that report the minimum texture buffer size mandated by the standard
     // experience slowdown when approaching said limit, use a smaller size for these buffers.
-    if (vendor == Vendor::ARM && max_texel_buffer_size == MIN_TEXTURE_BUFFER_SIZE) {
+    if (IsVendorMali() && max_texel_buffer_size == MIN_TEXTURE_BUFFER_SIZE) {
         return 16 * 1024;  // 16 KiB
     }
     return std::min<GLsizeiptr>(max_texel_buffer_size * 8ULL, TEXTURE_BUFFER_SIZE);
@@ -98,7 +99,7 @@ RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory, Pica::PicaCore&
     : VideoCore::RasterizerAccelerated{memory, pica}, driver{driver_},
       shader_manager{renderer.GetRenderWindow(), driver, !driver.IsOpenGLES()},
       runtime{driver, renderer}, res_cache{memory, custom_tex_manager, runtime, regs, renderer},
-      texture_buffer_size{TextureBufferSize(IsVendorMali() ? Vendor::ARM : Vendor::Other)},
+      texture_buffer_size{TextureBufferSize()},
       vertex_buffer{driver, GL_ARRAY_BUFFER, VERTEX_BUFFER_SIZE},
       uniform_buffer{driver, GL_UNIFORM_BUFFER, UNIFORM_BUFFER_SIZE},
       index_buffer{driver, GL_ELEMENT_ARRAY_BUFFER, INDEX_BUFFER_SIZE},
