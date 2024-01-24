@@ -29,6 +29,13 @@ using VideoCore::SurfaceType;
 using namespace Common::Literals;
 using namespace Pica::Shader::Generator;
 
+namespace {
+    static bool IsVendorMali() {
+        std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
+        return gpu_vendor.find("ARM") != std::string::npos;
+    }
+}
+
 enum class Vendor {
     ARM,
     Other
