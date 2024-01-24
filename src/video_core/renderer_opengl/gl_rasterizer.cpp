@@ -73,8 +73,6 @@ GLenum MakeAttributeType(Pica::PipelineRegs::VertexAttributeFormat format) {
     GLint max_texel_buffer_size;
     glGetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &max_texel_buffer_size);
 
-    std::string gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
-    Vendor vendor = (gpu_vendor.find("ARM") != std::string::npos) ? Vendor::ARM : Vendor::Other;
     // Old Mali GPUs that report the minimum texture buffer size mandated by the standard
     // experience slowdown when approaching said limit, use a smaller size for these buffers.
     if (vendor == Vendor::ARM && max_texel_buffer_size == MIN_TEXTURE_BUFFER_SIZE) {
@@ -93,7 +91,7 @@ RasterizerOpenGL::RasterizerOpenGL(Memory::MemorySystem& memory, Pica::PicaCore&
     : VideoCore::RasterizerAccelerated{memory, pica}, driver{driver_},
       shader_manager{renderer.GetRenderWindow(), driver, !driver.IsOpenGLES()},
       runtime{driver, renderer}, res_cache{memory, custom_tex_manager, runtime, regs, renderer},
-      texture_buffer_size{TextureBufferSize()},
+      texture_buffer_size{TextureBufferSize(IsVendorMali() ? Vendor::ARM : Vendor::Other)},
       vertex_buffer{driver, GL_ARRAY_BUFFER, VERTEX_BUFFER_SIZE},
       uniform_buffer{driver, GL_UNIFORM_BUFFER, UNIFORM_BUFFER_SIZE},
       index_buffer{driver, GL_ELEMENT_ARRAY_BUFFER, INDEX_BUFFER_SIZE},
