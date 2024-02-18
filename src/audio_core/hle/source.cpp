@@ -298,9 +298,9 @@ void Source::ParseConfig(SourceConfiguration::Configuration& config,
                         b.buffer_id,
                         state.mono_or_stereo,
                         state.format,
-                        true,
-                        {}, // 0 in u32_dsp
-                        false,
+                        true,  // from_queue
+                        0,     // play_position
+                        false, // has_played
                     });
                 }
                 LOG_TRACE(Audio_DSP, "enqueuing queued {} addr={:#010x} len={} id={}", i,
@@ -321,16 +321,19 @@ void Source::ParseConfig(SourceConfiguration::Configuration& config,
 void Source::GenerateFrame() {
     current_frame.fill({});
 
-    if (state.current_buffer.empty() && !DequeueBuffer()) {
+    if (state.current_buffer.empty()) {
+        // TODO(SachinV): Should dequeue happen at the end of the frame generation?
+        if (DequeueBuffer()) {
+            return;
+        }
         state.enabled = false;
         state.buffer_update = true;
+        state.last_buffer_id = state.current_buffer_id;
         state.current_buffer_id = 0;
         return;
     }
 
     std::size_t frame_position = 0;
-
-    state.current_sample_number = state.next_sample_number;
     while (frame_position < current_frame.size()) {
         if (state.current_buffer.empty() && !DequeueBuffer()) {
             break;
@@ -357,7 +360,7 @@ void Source::GenerateFrame() {
     }
     // TODO(jroweboy): Keep track of frame_position independently so that it doesn't lose precision
     // over time
-    state.next_sample_number += static_cast<u32>(frame_position * state.rate_multiplier);
+    state.current_sample_number += static_cast<u32>(frame_position * state.rate_multiplier);
 
     state.filters.ProcessFrame(current_frame);
 }
@@ -408,9 +411,9 @@ bool Source::DequeueBuffer() {
 
     // the first playthrough starts at play_position, loops start at the beginning of the buffer
     state.current_sample_number = (!buf.has_played) ? buf.play_position : 0;
-    state.next_sample_number = state.current_sample_number;
     state.current_buffer_physical_address = buf.physical_address;
     state.current_buffer_id = buf.buffer_id;
+    state.last_buffer_id = 0;
     state.buffer_update = buf.from_queue && !buf.has_played;
 
     if (buf.is_looping) {
@@ -418,8 +421,17 @@ bool Source::DequeueBuffer() {
         state.input_queue.push(buf);
     }
 
-    LOG_TRACE(Audio_DSP, "source_id={} buffer_id={} from_queue={} current_buffer.size()={}",
-              source_id, buf.buffer_id, buf.from_queue, state.current_buffer.size());
+    // Because our interpolation consumes samples instead of using an index,
+    // let's just consume the samples up to the current sample number.
+    state.current_buffer.erase(
+        state.current_buffer.begin(),
+        std::next(state.current_buffer.begin(), state.current_sample_number));
+
+    LOG_TRACE(Audio_DSP,
+              "source_id={} buffer_id={} from_queue={} current_buffer.size()={}, "
+              "buf.has_played={}, buf.play_position={}",
+              source_id, buf.buffer_id, buf.from_queue, state.current_buffer.size(), buf.has_played,
+              buf.play_position);
     return true;
 }
 
@@ -432,9 +444,10 @@ SourceStatus::Status Source::GetCurrentStatus() {
     ret.is_enabled = state.enabled;
     ret.current_buffer_id_dirty = state.buffer_update ? 1 : 0;
     state.buffer_update = false;
-    ret.current_buffer_id = state.current_buffer_id;
-    ret.buffer_position = state.current_sample_number;
     ret.sync_count = state.sync_count;
+    ret.buffer_position = state.current_sample_number;
+    ret.current_buffer_id = state.current_buffer_id;
+    ret.last_buffer_id = state.last_buffer_id;
 
     return ret;
 }
